@@ -25,6 +25,7 @@ from flask import (
     redirect,
     render_template,
     request,
+    send_from_directory,
     session,
     url_for,
 )
@@ -124,11 +125,11 @@ def inject_csrf_token() -> Dict[str, Any]:
 
 @app.before_request
 def require_household_login() -> Optional[Response]:
-    """Ensure every route except /login, /health and static files requires authentication."""
-    # Allow unauthenticated access to /login, /health, and static assets
+    """Ensure every route except /login, /health, /favicon.ico and static files requires authentication."""
+    # Allow unauthenticated access to /login, /health, /favicon.ico, and static assets
     if (
-        request.endpoint in ("login", "health", "static")
-        or request.path in ("/login", "/health")
+        request.endpoint in ("login", "health", "favicon", "static")
+        or request.path in ("/login", "/health", "/favicon.ico")
         or request.path.startswith("/static/")
     ):
         return None
@@ -371,6 +372,16 @@ def get_active_period_data(conn):
 def health() -> Response:
     """Liveness probe for Render health checks. Never touches the database."""
     return Response('{"status": "healthy"}', mimetype="application/json", status=200)
+
+
+@app.route("/favicon.ico")
+def favicon() -> Response:
+    """Serve favicon.ico directly at root URL for browsers."""
+    return send_from_directory(
+        os.path.join(app.root_path, "static"),
+        "favicon.ico",
+        mimetype="image/vnd.microsoft.icon",
+    )
 
 
 @app.route("/login", methods=["GET", "POST"])

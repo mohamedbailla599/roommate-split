@@ -438,6 +438,18 @@ def test_health_check_does_not_require_auth_or_db():
         assert res.json == {"status": "healthy"}
 
 
+def test_favicon_does_not_require_auth():
+    """Verify favicon routes are unauthenticated and return valid icons."""
+    with app.test_client() as unauth_client:
+        res_ico = unauth_client.get("/favicon.ico")
+        assert res_ico.status_code == 200
+        assert "image/" in res_ico.content_type
+
+        res_svg = unauth_client.get("/static/favicon.svg")
+        assert res_svg.status_code == 200
+        assert b"<svg" in res_svg.data
+
+
 def test_unauthenticated_request_redirects_to_login():
     """Verify unauthenticated requests to protected endpoints redirect to /login."""
     with app.test_client() as unauth_client:
