@@ -100,6 +100,41 @@ This seeds 3 roommates (Mohamed, Brahim, Mouad) and sample expenses covering:
 
 ---
 
+## Deploy on Render 🚀
+
+Roommate Split is configured for one-click or manual deployment as a long-lived Web Service on [Render](https://render.com) backed by Neon PostgreSQL.
+
+### 1. Create a New Web Service
+1. In the [Render Dashboard](https://dashboard.render.com), click **New +** $\rightarrow$ **Web Service**.
+2. Connect your GitHub repository (`roommate-split`).
+3. Configure the service settings:
+   - **Environment**: `Python`
+   - **Region**: Frankfurt (EU Central) *(choose the region closest to your Neon database)*
+   - **Branch**: `main`
+   - **Build Command**: `pip install -r requirements.txt`
+   - **Start Command**: `gunicorn app:app` *(or `gunicorn -w 2 -b 0.0.0.0:$PORT app:app`)*
+   - **Health Check Path**: `/health`
+
+### 2. Configure Environment Variables
+In the **Environment** tab of your Render service, add the following environment variables:
+
+| Variable | Description | Example / Note |
+| :--- | :--- | :--- |
+| `DATABASE_URL` | Neon PostgreSQL pooled connection string | `postgresql://user:pass@ep-xyz-pooler.c-8.eu-central-1.aws.neon.tech/neondb?sslmode=require` |
+| `SECRET_KEY` | High-entropy secret key for session signing | Generate with `python -c "import secrets; print(secrets.token_hex(32))"` |
+| `APP_PASSWORD` | Shared password for household login | e.g. `MyApartment2026!` |
+| `PORT` | Web port | Managed automatically by Render (defaults to 10000 or 5000) |
+| `PYTHON_VERSION` | Python runtime version *(optional)* | `3.12.0` |
+
+> ⚠️ **Production Safety Check**: In production mode (`RENDER=true`), the application refuses to start if `SECRET_KEY` or `APP_PASSWORD` is missing, and automatically enables `SESSION_COOKIE_SECURE = True`.
+
+### 3. Neon PostgreSQL Note
+- **Pooled Connection String**: Always use Neon's connection pooler URL (containing `-pooler` in the hostname). This allows multiple Gunicorn worker processes to share database connections efficiently.
+- **Serverless Resilience**: Both Render free tier and Neon serverless suspend after periods of inactivity. Roommate Split includes built-in connection pool pre-pinging (`SELECT 1`) to automatically recycle dropped SSL connections without crashing requests with 500 errors.
+- **Health Check**: The `/health` endpoint serves as a lightweight liveness probe for Render that verifies app responsiveness without waking up or querying the database.
+
+---
+
 ## Running Automated Tests
 
 Run the full pytest suite (pure split logic tests and integration web tests):

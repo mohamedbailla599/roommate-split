@@ -8,7 +8,8 @@ from typing import Any, Dict, List, Optional
 
 try:
     from dotenv import load_dotenv
-    load_dotenv()
+    if not os.environ.get("RENDER") and os.environ.get("FLASK_ENV") != "production":
+        load_dotenv()
 except ImportError:
     pass
 
@@ -105,9 +106,14 @@ class PgConnectionWrapper:
             return cur
         except Exception as e:
             err_msg = str(e).lower()
-            if ("closed" in err_msg or "terminating connection" in err_msg) and self._pool is not None:
+            # Strictly allow retries ONLY for idempotent SELECT queries.
+            # NEVER retry INSERT, UPDATE, DELETE, or DDL statements after a failure,
+            # because the server may have processed the write before dropping the connection,
+            # which would cause duplicate writes or duplicate records.
+            is_select_query = query.strip().upper().startswith("SELECT")
+            if is_select_query and ("closed" in err_msg or "terminating connection" in err_msg) and self._pool is not None:
                 try:
-                    # Stale connection recovery
+                    # Discard stale connection and fetch a fresh one from the pool
                     try:
                         self._pool.putconn(self._conn, close=True)
                     except Exception:

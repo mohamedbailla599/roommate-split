@@ -9,12 +9,13 @@ import csv
 import io
 import os
 import socket
+import threading
 import time
 from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta
 import secrets
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from flask import (
     Flask,
@@ -40,12 +41,72 @@ from split_logic import (
 )
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "roommate-split-dev-secret-key-2026")
+
+# Environment & Production Configuration
+is_debug = os.environ.get("FLASK_DEBUG", "0").lower() in ("1", "true", "yes")
+is_production = (
+    os.environ.get("RENDER") == "true"
+    or os.environ.get("FLASK_ENV") == "production"
+    or os.environ.get("ENV") == "production"
+    or os.environ.get("PRODUCTION") == "true"
+)
+
+raw_secret_key = os.environ.get("SECRET_KEY")
+raw_app_password = os.environ.get("APP_PASSWORD")
+
+if is_production:
+    if not raw_secret_key:
+        raise RuntimeError("CRITICAL: SECRET_KEY environment variable is missing. It is required in production mode.")
+    if not raw_app_password:
+        raise RuntimeError("CRITICAL: APP_PASSWORD environment variable is missing. It is required in production mode.")
+
+app.secret_key = raw_secret_key or "roommate-split-dev-secret-key-2026"
+APP_PASSWORD = raw_app_password or "roommate"
+
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5 MB max upload
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = not is_debug
+
+
+# -----------------------------------------------------------------------------
+# Rate Limiting & Household Authentication State
+# -----------------------------------------------------------------------------
+_failed_login_attempts: Dict[str, List[float]] = defaultdict(list)
+_failed_login_lock = threading.Lock()
+MAX_FAILED_LOGIN_ATTEMPTS = 5
+LOGIN_LOCKOUT_SECONDS = 300  # 5-minute lockout
+
+
+def get_client_ip() -> str:
+    """Extract client IP address considering proxy headers (e.g. Render reverse proxy)."""
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.remote_addr or "127.0.0.1"
+
+
+def is_login_rate_limited(ip: str) -> bool:
+    """Check if the given IP address is currently locked out after repeated failed logins."""
+    now = time.time()
+    with _failed_login_lock:
+        attempts = [t for t in _failed_login_attempts[ip] if now - t < LOGIN_LOCKOUT_SECONDS]
+        _failed_login_attempts[ip] = attempts
+        return len(attempts) >= MAX_FAILED_LOGIN_ATTEMPTS
+
+
+def record_failed_login(ip: str) -> None:
+    """Record a failed login attempt for the given IP address."""
+    with _failed_login_lock:
+        _failed_login_attempts[ip].append(time.time())
+
+
+def clear_failed_logins(ip: str) -> None:
+    """Clear failed login records after a successful login."""
+    with _failed_login_lock:
+        _failed_login_attempts.pop(ip, None)
 
 
 def generate_csrf_token() -> str:
@@ -59,6 +120,24 @@ def generate_csrf_token() -> str:
 def inject_csrf_token() -> Dict[str, Any]:
     """Expose csrf_token() helper to all Jinja templates."""
     return {"csrf_token": generate_csrf_token}
+
+
+@app.before_request
+def require_household_login() -> Optional[Response]:
+    """Ensure every route except /login, /health and static files requires authentication."""
+    # Allow unauthenticated access to /login, /health, and static assets
+    if (
+        request.endpoint in ("login", "health", "static")
+        or request.path in ("/login", "/health")
+        or request.path.startswith("/static/")
+    ):
+        return None
+
+    if not session.get("authenticated"):
+        next_target = request.full_path if request.query_string else request.path
+        return redirect(url_for("login", next=next_target))
+
+    return None
 
 
 @app.before_request
@@ -286,6 +365,53 @@ def get_active_period_data(conn):
     balances_data = calculate_balances(all_rids, expenses, payments)
 
     return roommate_map, expenses, payments, balances_data
+
+
+@app.route("/health")
+def health() -> Response:
+    """Liveness probe for Render health checks. Never touches the database."""
+    return Response('{"status": "healthy"}', mimetype="application/json", status=200)
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login() -> Any:
+    """Household shared password login."""
+    next_url = request.args.get("next") or request.form.get("next") or url_for("expenses")
+    if not next_url.startswith("/") or next_url.startswith("//"):
+        next_url = url_for("expenses")
+
+    if session.get("authenticated"):
+        return redirect(next_url)
+
+    ip = get_client_ip()
+
+    if request.method == "POST":
+        if is_login_rate_limited(ip):
+            flash("Too many failed login attempts. Please wait 5 minutes before trying again.", "danger")
+            return render_template("login.html", next_url=next_url), 429
+
+        submitted_password = request.form.get("password", "")
+        if secrets.compare_digest(submitted_password, APP_PASSWORD):
+            clear_failed_logins(ip)
+            session["authenticated"] = True
+            session["authenticated_at"] = time.time()
+            session["csrf_token"] = secrets.token_hex(32)
+            flash("Household unlocked. Welcome back!", "success")
+            return redirect(next_url)
+
+        record_failed_login(ip)
+        flash("Incorrect household password. Please try again.", "danger")
+        return render_template("login.html", next_url=next_url), 401
+
+    return render_template("login.html", next_url=next_url)
+
+
+@app.route("/logout")
+def logout() -> Response:
+    """Log out of household and clear session."""
+    session.clear()
+    flash("You have been logged out of your household.", "info")
+    return redirect(url_for("login"))
 
 
 @app.route("/")

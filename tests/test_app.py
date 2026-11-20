@@ -24,6 +24,8 @@ def client():
         init_db(db_path)
 
     with app.test_client() as client:
+        with client.session_transaction() as sess:
+            sess["authenticated"] = True
         yield client
 
     if old_db_path:
@@ -426,4 +428,164 @@ def test_csrf_protection_rejects_forged_requests(client):
         assert b"Legitimate" in res_ok.data
     finally:
         client.application.config["TESTING"] = True
+
+
+def test_health_check_does_not_require_auth_or_db():
+    """Verify /health is unauthenticated, lightweight, and returns 200 JSON."""
+    with app.test_client() as unauth_client:
+        res = unauth_client.get("/health")
+        assert res.status_code == 200
+        assert res.json == {"status": "healthy"}
+
+
+def test_unauthenticated_request_redirects_to_login():
+    """Verify unauthenticated requests to protected endpoints redirect to /login."""
+    with app.test_client() as unauth_client:
+        res = unauth_client.get("/expenses")
+        assert res.status_code == 302
+        assert "/login" in res.headers["Location"]
+        assert "next=/expenses" in res.headers["Location"] or "next=%2Fexpenses" in res.headers["Location"]
+
+
+def test_login_flow_and_rate_limiting():
+    """Verify household login, rate limiting on failures, and logout."""
+    from app import _failed_login_attempts, MAX_FAILED_LOGIN_ATTEMPTS, APP_PASSWORD
+
+    with app.test_client() as c:
+        # GET login page
+        res = c.get("/login")
+        assert res.status_code == 200
+        assert b"Household Login" in res.data
+        assert b"csrf_token" in res.data
+
+        # 1. Invalid password attempts
+        _failed_login_attempts.clear()
+        for _ in range(MAX_FAILED_LOGIN_ATTEMPTS):
+            res_bad = c.post("/login", data={"password": "wrong-password"})
+            assert res_bad.status_code == 401
+            assert b"Incorrect household password" in res_bad.data
+
+        # 6th attempt should be blocked with 429 Too Many Requests
+        res_blocked = c.post("/login", data={"password": "wrong-password"})
+        assert res_blocked.status_code == 429
+        assert b"Too many failed login attempts" in res_blocked.data
+
+        # Clear rate limit and log in successfully
+        _failed_login_attempts.clear()
+        res_good = c.post("/login", data={"password": APP_PASSWORD}, follow_redirects=True)
+        assert res_good.status_code == 200
+        assert b"Household unlocked" in res_good.data
+
+        # Logout
+        res_logout = c.get("/logout", follow_redirects=True)
+        assert res_logout.status_code == 200
+        assert b"You have been logged out" in res_logout.data
+
+
+def test_pg_connection_wrapper_retry_policy():
+    """Verify PgConnectionWrapper.execute() retries SELECT on stale conn, but NEVER INSERT/UPDATE/DELETE."""
+    import psycopg2
+    from db import PgConnectionWrapper
+
+    class MockPool:
+        def __init__(self, fresh_conn):
+            self.fresh_conn = fresh_conn
+            self.put_closed = []
+            self.getconn_calls = 0
+
+        def putconn(self, conn, close=False):
+            self.put_closed.append((conn, close))
+
+        def getconn(self):
+            self.getconn_calls += 1
+            return self.fresh_conn
+
+    class MockFailingCursor:
+        def execute(self, query, params=None):
+            raise psycopg2.OperationalError("SSL connection has been closed unexpectedly")
+
+    class MockFreshCursor:
+        def __init__(self):
+            self.executed = []
+            self.description = [("id",)]
+
+        def execute(self, query, params=None):
+            self.executed.append((query, params))
+
+    class MockConn:
+        def __init__(self, cursor_obj):
+            self._cursor = cursor_obj
+
+        def cursor(self):
+            return self._cursor
+
+    stale_conn = MockConn(MockFailingCursor())
+    fresh_conn = MockConn(MockFreshCursor())
+    pool = MockPool(fresh_conn)
+    wrapper = PgConnectionWrapper(stale_conn, pool=pool)
+
+    # 1. SELECT query SHOULD retry on closed connection
+    wrapper.execute("SELECT * FROM roommates")
+    assert pool.getconn_calls == 1
+    assert len(fresh_conn._cursor.executed) == 1
+    assert fresh_conn._cursor.executed[0][0] == "SELECT * FROM roommates"
+
+    # 2. INSERT query MUST NEVER retry on closed connection
+    failing_insert_conn = MockConn(MockFailingCursor())
+    wrapper_insert = PgConnectionWrapper(failing_insert_conn, pool=pool)
+    with pytest.raises(psycopg2.OperationalError):
+        wrapper_insert.execute("INSERT INTO expenses (label) VALUES (?)", ("Test",))
+    assert pool.getconn_calls == 1  # Did NOT call pool.getconn for INSERT retry
+
+    # 3. UPDATE query MUST NEVER retry
+    failing_update_conn = MockConn(MockFailingCursor())
+    wrapper_update = PgConnectionWrapper(failing_update_conn, pool=pool)
+    with pytest.raises(psycopg2.OperationalError):
+        wrapper_update.execute("UPDATE roommates SET name = ? WHERE id = ?", ("New", 1))
+    assert pool.getconn_calls == 1
+
+    # 4. DELETE query MUST NEVER retry
+    failing_delete_conn = MockConn(MockFailingCursor())
+    wrapper_delete = PgConnectionWrapper(failing_delete_conn, pool=pool)
+    with pytest.raises(psycopg2.OperationalError):
+        wrapper_delete.execute("DELETE FROM expenses WHERE id = ?", (1,))
+    assert pool.getconn_calls == 1
+
+
+def test_production_mode_checks():
+    """Verify application startup fails if SECRET_KEY or APP_PASSWORD missing in production."""
+    import subprocess
+    import sys
+
+    # 1. Test missing SECRET_KEY in production mode raises RuntimeError
+    env_no_secret = {
+        **os.environ,
+        "RENDER": "true",
+        "APP_PASSWORD": "mypassword",
+    }
+    env_no_secret.pop("SECRET_KEY", None)
+    proc = subprocess.run(
+        [sys.executable, "-c", "import app"],
+        env=env_no_secret,
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode != 0
+    assert "SECRET_KEY environment variable is missing" in proc.stderr
+
+    # 2. Test missing APP_PASSWORD in production mode raises RuntimeError
+    env_no_pass = {
+        **os.environ,
+        "RENDER": "true",
+        "SECRET_KEY": "supersecretkey12345",
+    }
+    env_no_pass.pop("APP_PASSWORD", None)
+    proc_pass = subprocess.run(
+        [sys.executable, "-c", "import app"],
+        env=env_no_pass,
+        capture_output=True,
+        text=True,
+    )
+    assert proc_pass.returncode != 0
+    assert "APP_PASSWORD environment variable is missing" in proc_pass.stderr
 
