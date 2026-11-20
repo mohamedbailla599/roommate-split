@@ -212,8 +212,14 @@ def get_connection(db_target: Optional[str] = None) -> Any:
     target = db_target or get_default_target()
 
     if is_postgres_url(target):
-        # Clean channel_binding if present since standard psycopg2 driver might not need it
-        clean_target = target.replace("&channel_binding=require", "").replace("?channel_binding=require", "")
+        # Strip any surrounding quotes pulled from .env
+        clean_target = target.strip("\"' \n\r")
+        # Clean channel_binding parameter safely if present
+        if "?" in clean_target:
+            base_url, query_str = clean_target.split("?", 1)
+            query_params = [p for p in query_str.split("&") if not p.startswith("channel_binding=")]
+            clean_target = base_url + ("?" + "&".join(query_params) if query_params else "")
+
         pool = _get_or_create_pool(clean_target)
         for _ in range(3):
             try:
