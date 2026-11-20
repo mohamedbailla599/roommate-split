@@ -12,16 +12,19 @@ import socket
 import time
 from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta
+import secrets
 from pathlib import Path
 from typing import Any, Dict, List
 
 from flask import (
     Flask,
     Response,
+    abort,
     flash,
     redirect,
     render_template,
     request,
+    session,
     url_for,
 )
 from werkzeug.utils import secure_filename
@@ -41,6 +44,39 @@ app.secret_key = os.environ.get("SECRET_KEY", "roommate-split-dev-secret-key-202
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5 MB max upload
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+
+
+def generate_csrf_token() -> str:
+    """Generate or retrieve a cryptographically secure CSRF token for the session."""
+    if "csrf_token" not in session:
+        session["csrf_token"] = secrets.token_hex(32)
+    return session["csrf_token"]
+
+
+@app.context_processor
+def inject_csrf_token() -> Dict[str, Any]:
+    """Expose csrf_token() helper to all Jinja templates."""
+    return {"csrf_token": generate_csrf_token}
+
+
+@app.before_request
+def verify_csrf() -> None:
+    """Validate CSRF token for state-changing requests (POST, PUT, DELETE, PATCH)."""
+    # Bypass during test suite runs
+    if app.config.get("TESTING"):
+        return None
+
+    # Safe HTTP methods do not require CSRF tokens
+    if request.method in ("GET", "HEAD", "OPTIONS", "TRACE"):
+        return None
+
+    submitted_token = request.form.get("csrf_token") or request.headers.get("X-CSRFToken")
+    session_token = session.get("csrf_token")
+
+    if not submitted_token or not session_token or not secrets.compare_digest(submitted_token, session_token):
+        abort(400, description="CSRF token missing or invalid. Please refresh the page and try again.")
 
 BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_AVATARS_DIR = BASE_DIR / "static" / "uploads" / "avatars"

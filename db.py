@@ -99,9 +99,26 @@ class PgConnectionWrapper:
         return PgCursorWrapper(self._conn.cursor())
 
     def execute(self, query: str, params: Optional[Any] = None) -> PgCursorWrapper:
-        cur = self.cursor()
-        cur.execute(query, params)
-        return cur
+        try:
+            cur = self.cursor()
+            cur.execute(query, params)
+            return cur
+        except Exception as e:
+            err_msg = str(e).lower()
+            if ("closed" in err_msg or "terminating connection" in err_msg) and self._pool is not None:
+                try:
+                    # Stale connection recovery
+                    try:
+                        self._pool.putconn(self._conn, close=True)
+                    except Exception:
+                        pass
+                    self._conn = self._pool.getconn()
+                    cur = self.cursor()
+                    cur.execute(query, params)
+                    return cur
+                except Exception:
+                    raise e
+            raise
 
     def commit(self) -> None:
         if self._conn is not None:
@@ -192,18 +209,26 @@ def get_connection(db_target: Optional[str] = None) -> Any:
         # Clean channel_binding if present since standard psycopg2 driver might not need it
         clean_target = target.replace("&channel_binding=require", "").replace("?channel_binding=require", "")
         pool = _get_or_create_pool(clean_target)
-        try:
-            raw_conn = pool.getconn()
-            if raw_conn.closed:
-                pool.putconn(raw_conn, close=True)
+        for _ in range(3):
+            try:
                 raw_conn = pool.getconn()
-        except Exception:
-            # Fallback to direct connection if pool fails
-            import psycopg2
-            raw_conn = psycopg2.connect(clean_target)
-            return PgConnectionWrapper(raw_conn)
+                if raw_conn.closed:
+                    pool.putconn(raw_conn, close=True)
+                    continue
+                # Pre-ping to discard connections terminated by Neon serverless idle timeout
+                with raw_conn.cursor() as cur:
+                    cur.execute("SELECT 1;")
+                return PgConnectionWrapper(raw_conn, pool=pool)
+            except Exception:
+                try:
+                    pool.putconn(raw_conn, close=True)
+                except Exception:
+                    pass
 
-        return PgConnectionWrapper(raw_conn, pool=pool)
+        # Fallback to direct fresh connection if pool connections were stale
+        import psycopg2
+        raw_conn = psycopg2.connect(clean_target)
+        return PgConnectionWrapper(raw_conn)
 
     # SQLite
     conn = sqlite3.connect(target)

@@ -400,3 +400,30 @@ def test_roommate_avatar_upload_and_remove(client):
     assert res_remove.status_code == 200
     assert b"Profile picture for Yassine removed." in res_remove.data
 
+
+def test_csrf_protection_rejects_forged_requests(client):
+    """Verify that CSRF protection rejects forged POST requests when active."""
+    client.application.config["TESTING"] = False
+    try:
+        # 1. POST without any CSRF token is rejected with 400 Bad Request
+        res_blocked = client.post("/roommates/add", data={"name": "Attacker"})
+        assert res_blocked.status_code == 400
+        assert b"CSRF token missing or invalid" in res_blocked.data
+
+        # 2. GET generates a session CSRF token
+        client.get("/roommates")
+        with client.session_transaction() as sess:
+            valid_token = sess.get("csrf_token")
+        assert valid_token is not None
+
+        # 3. POST with the valid session token succeeds
+        res_ok = client.post(
+            "/roommates/add",
+            data={"name": "Legitimate", "csrf_token": valid_token},
+            follow_redirects=True,
+        )
+        assert res_ok.status_code == 200
+        assert b"Legitimate" in res_ok.data
+    finally:
+        client.application.config["TESTING"] = True
+

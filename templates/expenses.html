@@ -99,6 +99,7 @@
                         data-confirm-item="{{ item.from_name }} → {{ item.to_name }}"
                         data-confirm-amount="+{{ item.amount_centimes | mad_fr }}"
                         data-confirm-btn="Delete Payment">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn-icon btn-icon-danger" style="width: 30px; height: 30px;" title="Delete payment">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <polyline points="3 6 5 6 21 6"></polyline>
@@ -166,6 +167,7 @@
                         data-confirm-item="{{ item.label }}"
                         data-confirm-amount="{{ item.amount_centimes | mad_fr }}"
                         data-confirm-btn="Delete Expense">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn-icon btn-icon-danger" style="width: 30px; height: 30px;" title="Delete expense">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <polyline points="3 6 5 6 21 6"></polyline>
@@ -229,6 +231,7 @@
     </div>
 
     <form method="POST" action="{{ url_for('add_payment') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="form-group">
         <label class="form-label">Who Paid? (Payer) *</label>
         <select name="from_roommate_id" class="form-control" required>

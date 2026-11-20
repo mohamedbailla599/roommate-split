@@ -29,6 +29,7 @@
   </div>
 
   <form method="POST" action="{{ url_for('add_roommate') }}" class="add-roommate-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="text" name="name" class="form-control" placeholder="Roommate name (e.g. Yassine)" required>
     <button type="submit" class="btn btn-primary" style="white-space: nowrap;">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -119,6 +120,7 @@
                 </button>
 
                 <form method="POST" action="{{ url_for('toggle_roommate_status', roommate_id=r.id) }}" style="display: inline;">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   {% if r.is_active %}
                     <button type="submit" class="btn btn-secondary btn-sm" title="Deactivate">
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -142,6 +144,7 @@
                       data-confirm-title="Delete Roommate"
                       data-confirm-item="Roommate: {{ r.name }}"
                       data-confirm-btn="Delete Roommate">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <button type="submit" class="btn btn-danger-outline btn-sm" title="Delete">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                       <polyline points="3 6 5 6 21 6"></polyline>
@@ -215,6 +218,7 @@
         </button>
 
         <form method="POST" action="{{ url_for('toggle_roommate_status', roommate_id=r.id) }}" style="display: inline;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           {% if r.is_active %}
             <button type="submit" class="btn btn-secondary btn-sm">Deactivate</button>
           {% else %}
@@ -227,6 +231,7 @@
               data-confirm-title="Delete Roommate"
               data-confirm-item="Roommate: {{ r.name }}"
               data-confirm-btn="Delete Roommate">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="btn btn-danger-outline btn-sm">Delete</button>
         </form>
       </div>
@@ -265,6 +270,7 @@
     </div>
 
     <form method="POST" id="avatarUploadForm" action="" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="form-group">
         <label class="form-label" for="avatarFileInput">Choose Image</label>
         <input type="file" id="avatarFileInput" name="avatar" class="form-control" accept="image/png, image/jpeg, image/webp, image/gif" required>
@@ -283,7 +289,9 @@
     </form>
 
     <!-- Hidden form for removing photo -->
-    <form method="POST" id="avatarRemoveForm" action="" style="display: none;"></form>
+    <form method="POST" id="avatarRemoveForm" action="" style="display: none;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    </form>
   </div>
 </div>
 
@@ -308,6 +316,7 @@
       </button>
     </div>
     <form method="POST" id="renameForm" action="">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="form-group">
         <label class="form-label" for="renameRoommateName">New Name</label>
         <input type="text" id="renameRoommateName" name="name" class="form-control" required>
