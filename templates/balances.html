@@ -1,0 +1,382 @@
+{% extends "base.html" %}
+
+{% block title %}Balances & Settle - Roommate Split{% endblock %}
+
+{% block content %}
+<!-- Signature Hero Summary Card -->
+<section class="hero-summary-card">
+  <div class="hero-top-row">
+    <div class="hero-tag">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"></circle>
+        <polyline points="12 6 12 12 14 14"></polyline>
+      </svg>
+      Current Active Period
+    </div>
+    {% if expenses_count > 0 %}
+      <button type="button" class="btn btn-sm" id="settleUpBtn" style="background: rgba(255, 255, 255, 0.18); color: #FFFFFF; border: 1px solid rgba(255, 255, 255, 0.25); backdrop-filter: blur(8px);">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+        Mark as Settled
+      </button>
+    {% endif %}
+  </div>
+
+  <div class="hero-amount tabular-nums" data-count-target="{{ total_period_centimes }}" data-amount="{{ total_period_centimes | mad }}">
+    {{ total_period_centimes | mad_fr }}
+  </div>
+
+  <div class="hero-sub">
+    <span>Total household spend across <strong>{{ expenses_count }} expense{% if expenses_count != 1 %}s{% endif %}</strong></span>
+    <span>&bull;</span>
+    <a href="{{ url_for('expenses') }}" style="color: #FFFFFF; text-decoration: underline; text-underline-offset: 3px; font-weight: 500;">
+      View expenses &rarr;
+    </a>
+  </div>
+</section>
+
+<!-- Household Individual Balances Grid -->
+<section style="margin-bottom: 2rem;">
+  <div class="card-header">
+    <div class="card-header-left">
+      <div class="header-icon-box">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+          <circle cx="9" cy="7" r="4"></circle>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+        </svg>
+      </div>
+      <h2 class="card-title">Roommate Balances</h2>
+    </div>
+  </div>
+
+  <div class="balances-grid">
+    {% for r in roommate_balances %}
+      <div class="balance-card" data-roommate-id="{{ r.id }}">
+        <div class="balance-card-top">
+          <div class="roommate-info">
+            <div class="avatar" style="{% if not r.avatar_url %}background: {{ r.gradient }};{% endif %}" title="{{ r.name }}">
+              {% if r.avatar_url %}
+                <img src="{{ r.avatar_url }}" alt="{{ r.name }}">
+              {% else %}
+                {{ r.initials }}
+              {% endif %}
+            </div>
+            <div>
+              <div class="roommate-name">{{ r.name }}</div>
+              {% if not r.is_active %}
+                <span class="badge badge-settled" style="font-size: 0.7rem; padding: 0.1rem 0.4rem;">Inactive</span>
+              {% endif %}
+            </div>
+          </div>
+
+          {% if r.net_balance > 0 %}
+            <span class="badge badge-gain">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="7" y1="17" x2="17" y2="7"></line>
+                <polyline points="7 7 17 7 17 17"></polyline>
+              </svg>
+              Gets Back
+            </span>
+          {% elif r.net_balance < 0 %}
+            <span class="badge badge-owe">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="7" y1="7" x2="17" y2="17"></line>
+                <polyline points="17 7 17 17 7 17"></polyline>
+              </svg>
+              Owes
+            </span>
+          {% else %}
+            <span class="badge badge-settled">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+              Settled
+            </span>
+          {% endif %}
+        </div>
+
+        <div class="balance-figure-box">
+          <div class="balance-amount tabular-nums {% if r.net_balance > 0 %}gain{% elif r.net_balance < 0 %}owe{% else %}settled{% endif %}" data-amount="{{ r.net_balance | mad }}">
+            {% if r.net_balance > 0 %}+{% endif %}{{ r.net_balance | mad_fr }}
+          </div>
+        </div>
+
+        <!-- Relative Progress Track -->
+        <div class="balance-track-container">
+          <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">
+            <span>
+              {% if r.net_balance > 0 %}
+                Gets back {{ r.net_balance | mad_fr }}
+              {% elif r.net_balance < 0 %}
+                Owes {{ (-r.net_balance) | mad_fr }}
+              {% else %}
+                All even
+              {% endif %}
+            </span>
+            <span class="tabular-nums">{{ r.balance_ratio }}%</span>
+          </div>
+          <div class="balance-track-bg">
+            <div class="balance-track-bar {% if r.net_balance > 0 %}gain{% elif r.net_balance < 0 %}owe{% else %}settled{% endif %}" style="width: {{ r.balance_ratio }}%;"></div>
+          </div>
+        </div>
+
+        <div class="balance-card-stats tabular-nums">
+          <span>Paid: <strong style="color: var(--text-primary);" data-amount="{{ r.total_paid | mad }}">{{ r.total_paid | mad_fr }}</strong></span>
+          <span>Share: <strong style="color: var(--text-primary);" data-amount="{{ r.total_share | mad }}">{{ r.total_share | mad_fr }}</strong></span>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</section>
+
+<!-- Direct Settle-Up Transfers -->
+<section class="card">
+  <div class="card-header">
+    <div class="card-header-left">
+      <div class="header-icon-box">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+          <polyline points="12 5 19 12 12 19"></polyline>
+        </svg>
+      </div>
+      <div>
+        <h2 class="card-title">Settlement Transfers</h2>
+        <p style="font-size: 0.84rem; color: var(--text-secondary); margin-top: 0.15rem;">
+          Minimal transactions required to bring every roommate's balance back to zero.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  {% if transfers %}
+    <div class="transfer-list">
+      {% for t in transfers %}
+        <div class="transfer-card">
+          <div class="transfer-route">
+            <!-- Debtor -->
+            <div class="transfer-person">
+              <div class="avatar avatar-sm" style="{% if not t.debtor_avatar_url %}background: {{ t.debtor_gradient }};{% endif %}">
+                {% if t.debtor_avatar_url %}
+                  <img src="{{ t.debtor_avatar_url }}" alt="{{ t.debtor_name }}">
+                {% else %}
+                  {{ t.debtor_initials }}
+                {% endif %}
+              </div>
+              <span>{{ t.debtor_name }}</span>
+            </div>
+
+            <!-- Route Connector -->
+            <div class="transfer-connector">
+              <span>pays</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+                <polyline points="12 5 19 12 12 19"></polyline>
+              </svg>
+            </div>
+
+            <!-- Creditor -->
+            <div class="transfer-person">
+              <div class="avatar avatar-sm" style="{% if not t.creditor_avatar_url %}background: {{ t.creditor_gradient }};{% endif %}">
+                {% if t.creditor_avatar_url %}
+                  <img src="{{ t.creditor_avatar_url }}" alt="{{ t.creditor_name }}">
+                {% else %}
+                  {{ t.creditor_initials }}
+                {% endif %}
+              </div>
+              <span>{{ t.creditor_name }}</span>
+            </div>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 0.65rem; flex-wrap: wrap;">
+            <!-- Transfer Amount -->
+            <div class="transfer-amount-pill tabular-nums" data-amount="{{ t.amount_centimes | mad }}">
+              {{ t.amount_centimes | mad_fr }}
+            </div>
+
+            <!-- Record Payment Button -->
+            <button type="button" class="btn btn-primary btn-sm open-payment-modal"
+                    data-from-id="{{ t.from_id }}"
+                    data-from-name="{{ t.debtor_name }}"
+                    data-from-initials="{{ t.debtor_initials }}"
+                    data-from-gradient="{{ t.debtor_gradient }}"
+                    data-from-avatar="{{ t.debtor_avatar_url or '' }}"
+                    data-to-id="{{ t.to_id }}"
+                    data-to-name="{{ t.creditor_name }}"
+                    data-to-initials="{{ t.creditor_initials }}"
+                    data-to-gradient="{{ t.creditor_gradient }}"
+                    data-to-avatar="{{ t.creditor_avatar_url or '' }}"
+                    data-amount="{{ t.amount_centimes }}"
+                    data-amount-formatted="{{ t.amount_centimes | mad_fr }}"
+                    title="Record full or partial payment">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+              Record Payment
+            </button>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+    <div style="margin-top: 1.5rem; display: flex; justify-content: flex-end;">
+      <button type="button" class="btn btn-secondary" id="settleUpBtnBottom" onclick="document.getElementById('settleModal').classList.add('active');">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+        Archive Settled Period
+      </button>
+    </div>
+  {% else %}
+    <!-- All Even Empty State -->
+    <div class="empty-state" style="padding: 2.5rem 1rem;">
+      <svg class="empty-state-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+        <polyline points="9 12 11 14 15 10"></polyline>
+      </svg>
+      <h3>All balances are even</h3>
+      <p>Nobody owes anyone anything in the current period. You are all settled up!</p>
+      {% if expenses_count > 0 %}
+        <div style="margin-top: 1rem;">
+          <button type="button" class="btn btn-primary" onclick="document.getElementById('settleModal').classList.add('active');">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+            Archive Period
+          </button>
+        </div>
+      {% endif %}
+    </div>
+  {% endif %}
+</section>
+
+<!-- Record Payment Modal (Quick settle individual transfer) -->
+<div class="modal-backdrop" id="paymentModal">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <div style="display: flex; align-items: center; gap: 0.65rem;">
+        <div class="header-icon-box" style="background: var(--accent-primary-light); color: var(--accent-primary);">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+        </div>
+        <div>
+          <h3 class="modal-title">Record Payment</h3>
+          <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">
+            Log full or partial repayment between roommates
+          </p>
+        </div>
+      </div>
+      <button type="button" class="btn-icon close-payment-modal" style="border: none;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Route Visual Card -->
+    <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 0.85rem 1rem; margin-bottom: 1.25rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;">
+      <div style="display: flex; align-items: center; gap: 0.5rem;">
+        <div class="avatar avatar-sm" id="payModalFromAvatar" style="background: var(--accent-primary);">??</div>
+        <span id="payModalFromName" style="font-weight: 700; font-size: 0.95rem;">From</span>
+      </div>
+      <div class="transfer-connector" style="font-size: 0.85rem;">
+        <span>pays</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+          <polyline points="12 5 19 12 12 19"></polyline>
+        </svg>
+      </div>
+      <div style="display: flex; align-items: center; gap: 0.5rem;">
+        <div class="avatar avatar-sm" id="payModalToAvatar" style="background: var(--accent-secondary);">??</div>
+        <span id="payModalToName" style="font-weight: 700; font-size: 0.95rem;">To</span>
+      </div>
+    </div>
+
+    <form method="POST" action="{{ url_for('add_payment') }}">
+      <input type="hidden" name="from_roommate_id" id="payModalFromId" value="">
+      <input type="hidden" name="to_roommate_id" id="payModalToId" value="">
+
+      <div class="form-group">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.45rem;">
+          <label class="form-label" for="payAmountInput" style="margin-bottom: 0;">Amount *</label>
+          <button type="button" class="btn btn-secondary btn-sm" id="payFullBtn" style="min-height: 28px; padding: 0.15rem 0.55rem; font-size: 0.75rem;">
+            Pay in full
+          </button>
+        </div>
+        <div class="amount-input-wrapper">
+          <input type="text" id="payAmountInput" name="amount" class="form-control hero-amount-input tabular-nums" placeholder="0,00" required autofocus>
+          <span class="amount-currency-tag">MAD</span>
+        </div>
+        <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.35rem;">
+          Enter the full amount or any partial amount paid.
+        </p>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="payDateInput">Payment Date *</label>
+        <input type="date" id="payDateInput" name="date" class="form-control" value="{{ today }}" required>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="payNotesInput">Note (Optional)</label>
+        <input type="text" id="payNotesInput" name="notes" class="form-control" placeholder="e.g. Cash, bank transfer, part 1">
+      </div>
+
+      <div style="display: flex; gap: 0.75rem; justify-content: flex-end; margin-top: 1.5rem;">
+        <button type="button" class="btn btn-secondary close-payment-modal">Cancel</button>
+        <button type="submit" class="btn btn-primary">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+          Confirm Payment
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Mark as Settled Confirmation Modal -->
+<div class="modal-backdrop" id="settleModal">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <div style="display: flex; align-items: center; gap: 0.65rem;">
+        <div class="header-icon-box" style="background: var(--gain-bg); color: var(--gain);">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+        </div>
+        <h3 class="modal-title">Confirm Settlement</h3>
+      </div>
+      <button type="button" class="btn-icon close-modal" style="border: none;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+
+    <p style="color: var(--text-secondary); font-size: 0.95rem; margin-bottom: 1.25rem; line-height: 1.5;">
+      Marking this period as settled will:
+    </p>
+
+    <ul style="margin-left: 1.25rem; color: var(--text-secondary); font-size: 0.9rem; line-height: 1.6; margin-bottom: 1.5rem;">
+      <li>Archive <strong>{{ expenses_count }} expense{% if expenses_count != 1 %}s{% endif %}</strong> into history permanently.</li>
+      <li>Record the <strong>{{ transfers|length }} debt transfer{% if transfers|length != 1 %}s{% endif %}</strong> as completed.</li>
+      <li>Start a brand-new period with all roommate balances reset to <strong>0,00 MAD</strong>.</li>
+    </ul>
+
+    <form method="POST" id="settleForm" action="{{ url_for('settle_up') }}">
+      <div style="display: flex; gap: 0.75rem; justify-content: flex-end;">
+        <button type="button" class="btn btn-secondary close-modal">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="confirmSettleBtn">
+          Yes, Settle &amp; Archive
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

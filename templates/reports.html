@@ -1,0 +1,502 @@
+{% extends "base.html" %}
+
+{% block title %}Reports & Analytics · Roommate Split{% endblock %}
+
+{% block content %}
+<div class="reports-page-wrapper">
+
+  <!-- Page Header & Period Selector -->
+  <div class="page-header" style="margin-bottom: 1.5rem;">
+    <div>
+      <div style="display: flex; align-items: center; gap: 0.65rem; margin-bottom: 0.25rem;">
+        <div class="header-icon-box" style="background: rgba(12, 110, 94, 0.1); color: var(--accent-primary);">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="20" x2="18" y2="10"></line>
+            <line x1="12" y1="20" x2="12" y2="4"></line>
+            <line x1="6" y1="20" x2="6" y2="14"></line>
+          </svg>
+        </div>
+        <h1 class="page-title" style="margin-bottom: 0;">Spending Reports &amp; Analytics</h1>
+      </div>
+      <p class="page-subtitle">Deep insights into household spending, daily trends, roommate contributions, and categories.</p>
+    </div>
+
+    <!-- Period Filter Pills -->
+    <div class="reports-filter-pills" role="tablist" aria-label="Period filter">
+      <a href="{{ url_for('reports', period='current') }}" class="filter-pill {% if period_filter == 'current' %}active{% endif %}">
+        Current Period
+      </a>
+      <a href="{{ url_for('reports', period='all') }}" class="filter-pill {% if period_filter == 'all' %}active{% endif %}">
+        All Time
+      </a>
+      {% for sp in settlement_periods %}
+        <a href="{{ url_for('reports', period=sp.id) }}" class="filter-pill {% if period_filter == (sp.id|string) %}active{% endif %}">
+          Settlement #{{ sp.id }}
+        </a>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% if not report.has_data %}
+    <!-- Empty State -->
+    <div class="card empty-state" style="text-align: center; padding: 4rem 1.5rem; margin-top: 1rem;">
+      <div class="empty-icon-box" style="margin: 0 auto 1.25rem auto;">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="20" x2="18" y2="10"></line>
+          <line x1="12" y1="20" x2="12" y2="4"></line>
+          <line x1="6" y1="20" x2="6" y2="14"></line>
+          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+        </svg>
+      </div>
+      <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem; color: var(--text-primary);">No Spending Data Found</h3>
+      <p style="color: var(--text-secondary); max-width: 440px; margin: 0 auto 1.5rem auto; font-size: 0.95rem; line-height: 1.5;">
+        {% if period_filter == 'current' %}
+          There are no active expenses in the current period yet. Add expenses to unlock charts, daily trends, and roommate statistics!
+        {% else %}
+          There are no recorded expenses matching this period filter.
+        {% endif %}
+      </p>
+      <a href="{{ url_for('add_expense') }}" class="btn btn-primary" style="display: inline-flex; align-items: center; gap: 0.5rem;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"></line>
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+        Add First Expense
+      </a>
+    </div>
+  {% else %}
+
+    <!-- Top KPI Summary Cards -->
+    <div class="reports-kpi-grid">
+      <!-- Total Spent -->
+      <div class="kpi-card card">
+        <div class="kpi-header">
+          <span class="kpi-title">Total Spent</span>
+          <div class="kpi-icon-pill" style="background: rgba(12, 110, 94, 0.12); color: var(--accent-primary);">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="5" width="20" height="14" rx="3"></rect>
+              <line x1="2" y1="10" x2="22" y2="10"></line>
+            </svg>
+          </div>
+        </div>
+        <div class="kpi-amount num-tabular">{{ report.total_spent_centimes|mad_fr }}</div>
+        <div class="kpi-subtext">
+          <span class="badge-neutral" style="font-weight: 600;">{{ report.expense_count }} expenses</span>
+          <span>across {{ report.days_span }} day{% if report.days_span > 1 %}s{% endif %}</span>
+        </div>
+      </div>
+
+      <!-- Daily Average -->
+      <div class="kpi-card card">
+        <div class="kpi-header">
+          <span class="kpi-title">Daily Average</span>
+          <div class="kpi-icon-pill" style="background: rgba(2, 132, 199, 0.12); color: #0284C7;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+          </div>
+        </div>
+        <div class="kpi-amount num-tabular">{{ report.daily_avg_centimes|mad_fr }}</div>
+        <div class="kpi-subtext">
+          <span>Spent per day on average</span>
+        </div>
+      </div>
+
+      <!-- Weekly Average / Pace -->
+      <div class="kpi-card card">
+        <div class="kpi-header">
+          <span class="kpi-title">Weekly Pace</span>
+          <div class="kpi-icon-pill" style="background: rgba(217, 119, 6, 0.12); color: #D97706;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+          </div>
+        </div>
+        <div class="kpi-amount num-tabular">{{ report.weekly_avg_centimes|mad_fr }}</div>
+        <div class="kpi-subtext">
+          <span>Projected per week pace</span>
+        </div>
+      </div>
+
+      <!-- Top Contributor -->
+      <div class="kpi-card card">
+        <div class="kpi-header">
+          <span class="kpi-title">Top Spender</span>
+          <div class="kpi-icon-pill" style="background: rgba(16, 185, 129, 0.12); color: var(--gain);">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
+            </svg>
+          </div>
+        </div>
+        {% if report.top_spender %}
+          <div style="display: flex; align-items: center; gap: 0.65rem; margin-top: 0.35rem;">
+            {% for r in report.roommate_series %}
+              {% if r.name == report.top_spender %}
+                <div class="avatar" style="background: {{ r.gradient }}; width: 34px; height: 34px; font-size: 0.85rem;">
+                  {{ r.initials }}
+                </div>
+                <div>
+                  <div style="font-weight: 700; font-size: 1.1rem; color: var(--text-primary); line-height: 1.2;">{{ r.name }}</div>
+                  <div class="num-tabular" style="font-size: 0.85rem; color: var(--text-secondary); font-weight: 600;">
+                    {{ r.total_paid_centimes|mad_fr }} ({{ r.paid_pct }}%)
+                  </div>
+                </div>
+              {% endif %}
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="kpi-amount" style="font-size: 1.1rem; color: var(--text-muted);">None</div>
+        {% endif %}
+        <div class="kpi-subtext" style="margin-top: 0.45rem;">
+          <span>Paid highest share of expenses</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Chart Section: Daily & Weekly Spending Trends -->
+    <div class="card chart-card" style="margin-bottom: 1.5rem;">
+      <div class="chart-header">
+        <div>
+          <h2 style="font-size: 1.15rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.2rem;">
+            Spending Over Time
+          </h2>
+          <p style="font-size: 0.85rem; color: var(--text-secondary);">
+            Daily and weekly household expense distribution
+          </p>
+        </div>
+
+        <!-- Chart View Toggle -->
+        <div class="chart-toggle-group">
+          <button type="button" class="chart-toggle-btn active" id="toggleDailyView" onclick="switchChartView('daily')">
+            Daily View
+          </button>
+          <button type="button" class="chart-toggle-btn" id="toggleWeeklyView" onclick="switchChartView('weekly')">
+            Weekly View
+          </button>
+        </div>
+      </div>
+
+      <!-- DAILY BAR CHART -->
+      <div id="dailyChartContainer" class="chart-view-panel">
+        <div class="chart-scroll-box">
+          <div class="chart-bars-wrap" style="min-width: {{ [report.daily_series|length * 48, 320]|max }}px;">
+            {% for d in report.daily_series %}
+              <div class="chart-bar-column" 
+                   data-date="{{ d.date }}" 
+                   data-label="{{ d.label }} ({{ d.weekday }})" 
+                   data-amount="{{ d.total_centimes|mad_fr }}" 
+                   data-count="{{ d.count }}">
+                <div class="chart-bar-track">
+                  <div class="chart-bar-fill {% if d.total_centimes > 0 %}active-bar{% endif %}" 
+                       style="height: {{ [d.pct_of_max, 4]|max }}%;">
+                  </div>
+                </div>
+                <div class="chart-bar-label">
+                  <span class="bar-day-name">{{ d.weekday }}</span>
+                  <span class="bar-day-date">{{ d.short_label }}</span>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="chart-footnote">
+          <span>Tap or hover any day bar to view exact amount and transactions</span>
+          <span style="font-weight: 600;">{{ report.start_date }} → {{ report.end_date }}</span>
+        </div>
+      </div>
+
+      <!-- WEEKLY BAR CHART -->
+      <div id="weeklyChartContainer" class="chart-view-panel" style="display: none;">
+        <div class="chart-scroll-box">
+          <div class="chart-bars-wrap" style="min-width: {{ [report.weekly_series|length * 90, 320]|max }}px; gap: 1.25rem;">
+            {% for w in report.weekly_series %}
+              <div class="chart-bar-column weekly-bar-col" 
+                   data-date="{{ w.week_key }}" 
+                   data-label="{{ w.label }}" 
+                   data-amount="{{ w.total_centimes|mad_fr }}" 
+                   data-count="{{ w.count }}">
+                <div class="chart-bar-track">
+                  <div class="chart-bar-fill active-bar weekly-fill" 
+                       style="height: {{ [w.pct_of_max, 4]|max }}%;">
+                  </div>
+                </div>
+                <div class="chart-bar-label">
+                  <span class="bar-day-name" style="font-size: 0.78rem;">{{ w.label }}</span>
+                  <span class="bar-day-date" style="font-size: 0.72rem; color: var(--text-muted);">{{ w.count }} expense{% if w.count > 1 %}s{% endif %}</span>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="chart-footnote">
+          <span>Weekly spending comparison</span>
+          <span style="font-weight: 600;">{{ report.weekly_series|length }} week{% if report.weekly_series|length > 1 %}s{% endif %} recorded</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Two-Column Grid: Roommate Dynamics & Day of Week -->
+    <div class="reports-two-col-grid">
+
+      <!-- Roommate Spending & Fair Share -->
+      <div class="card" style="padding: 1.5rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
+          <div>
+            <h2 style="font-size: 1.15rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.2rem;">
+              Roommate Contributions
+            </h2>
+            <p style="font-size: 0.85rem; color: var(--text-secondary);">
+              Who paid vs fair consumption share
+            </p>
+          </div>
+          <span class="badge-neutral" style="font-size: 0.75rem;">3 Roommates</span>
+        </div>
+
+        <!-- Roommate List Breakdown -->
+        <div class="roommate-contributions-list">
+          {% for r in report.roommate_series %}
+            <div class="roommate-contrib-row">
+              <div class="roommate-info-cell">
+                <div class="avatar" style="background: {{ r.gradient }}; width: 36px; height: 36px; font-size: 0.85rem;">
+                  {{ r.initials }}
+                </div>
+                <div>
+                  <div style="font-weight: 700; color: var(--text-primary); font-size: 0.95rem;">{{ r.name }}</div>
+                  <div style="font-size: 0.78rem; color: var(--text-muted);">
+                    Paid {{ r.expense_count }} expense{% if r.expense_count != 1 %}s{% endif %}
+                  </div>
+                </div>
+              </div>
+
+              <!-- Paid vs Share Bars -->
+              <div class="contrib-bars-cell">
+                <div style="display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 0.25rem;">
+                  <span style="color: var(--text-secondary);">Paid: <strong class="num-tabular" style="color: var(--text-primary);">{{ r.total_paid_centimes|mad_fr }}</strong> ({{ r.paid_pct }}%)</span>
+                  <span style="color: var(--text-secondary);">Share: <strong class="num-tabular" style="color: var(--text-primary);">{{ r.total_share_centimes|mad_fr }}</strong></span>
+                </div>
+                
+                <!-- Dual comparison progress bar -->
+                <div class="dual-progress-track">
+                  <div class="progress-bar-paid" style="width: {{ r.paid_pct }}%;" title="Paid {{ r.paid_pct }}%"></div>
+                </div>
+
+                <!-- Net status indicator -->
+                <div style="display: flex; justify-content: flex-end; margin-top: 0.35rem;">
+                  {% if r.net_centimes > 0 %}
+                    <span class="status-pill status-gets-back" style="font-size: 0.72rem; padding: 2px 8px;">
+                      Gets back {{ r.net_centimes|mad_fr }}
+                    </span>
+                  {% elif r.net_centimes < 0 %}
+                    <span class="status-pill status-owes" style="font-size: 0.72rem; padding: 2px 8px;">
+                      Owes {{ (r.net_centimes|abs)|mad_fr }}
+                    </span>
+                  {% else %}
+                    <span class="status-pill status-settled" style="font-size: 0.72rem; padding: 2px 8px;">
+                      All settled
+                    </span>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Spending by Category Intelligence -->
+      <div class="card" style="padding: 1.5rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
+          <div>
+            <h2 style="font-size: 1.15rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.2rem;">
+              Spending by Category
+            </h2>
+            <p style="font-size: 0.85rem; color: var(--text-secondary);">
+              Smart breakdown based on expense tags
+            </p>
+          </div>
+          <span class="badge-neutral" style="font-size: 0.75rem;">{{ report.category_series|length }} categories</span>
+        </div>
+
+        <div class="categories-list">
+          {% for c in report.category_series %}
+            <div class="category-item-row">
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.35rem;">
+                <div style="display: flex; align-items: center; gap: 0.55rem;">
+                  <span class="category-color-dot" style="background: {{ c.color }};"></span>
+                  <span style="font-weight: 600; font-size: 0.92rem; color: var(--text-primary);">{{ c.name }}</span>
+                  <span style="font-size: 0.78rem; color: var(--text-muted);">({{ c.count }})</span>
+                </div>
+                <div class="num-tabular" style="font-weight: 700; font-size: 0.95rem; color: var(--text-primary);">
+                  {{ c.total_centimes|mad_fr }}
+                  <span style="font-size: 0.78rem; font-weight: 500; color: var(--text-secondary); margin-left: 0.25rem;">
+                    {{ c.pct }}%
+                  </span>
+                </div>
+              </div>
+              
+              <div class="category-progress-track">
+                <div class="category-progress-fill" style="width: {{ c.pct }}%; background: {{ c.color }};"></div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Day-of-Week Spending Rhythm & Top Expenses Grid -->
+    <div class="reports-two-col-grid" style="margin-top: 1.5rem;">
+
+      <!-- Day of the Week Rhythm -->
+      <div class="card" style="padding: 1.5rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
+          <div>
+            <h2 style="font-size: 1.15rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.2rem;">
+              Day of Week Rhythm
+            </h2>
+            <p style="font-size: 0.85rem; color: var(--text-secondary);">
+              Household spending patterns from Monday to Sunday
+            </p>
+          </div>
+          {% if report.peak_dow %}
+            <span class="status-pill status-gets-back" style="font-size: 0.75rem; padding: 3px 8px;">
+              ⚡ Peak: {{ report.peak_dow }}
+            </span>
+          {% endif %}
+        </div>
+
+        <div class="dow-bars-container">
+          {% for dow in report.dow_series %}
+            <div class="dow-bar-col {% if dow.is_peak %}peak-dow{% endif %}">
+              <div class="dow-amount num-tabular">{{ dow.total_centimes|mad_fr }}</div>
+              <div class="dow-track">
+                <div class="dow-fill {% if dow.is_peak %}peak-fill{% endif %}" 
+                     style="height: {{ [dow.pct_of_max, 4]|max }}%;">
+                </div>
+              </div>
+              <div class="dow-name">{{ dow.short_name }}</div>
+              <div class="dow-pct">{{ dow.pct_of_total }}%</div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Top 5 Largest Expenses -->
+      <div class="card" style="padding: 1.5rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
+          <div>
+            <h2 style="font-size: 1.15rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.2rem;">
+              Largest Expenses
+            </h2>
+            <p style="font-size: 0.85rem; color: var(--text-secondary);">
+              Top household purchases in this period
+            </p>
+          </div>
+          <span class="badge-neutral" style="font-size: 0.75rem;">Top {{ report.top_expenses|length }}</span>
+        </div>
+
+        <div class="top-expenses-list">
+          {% for exp in report.top_expenses %}
+            <div class="top-expense-row">
+              <div style="display: flex; align-items: center; gap: 0.75rem; min-width: 0;">
+                <div class="avatar" style="background: {{ exp.payer_gradient }}; width: 34px; height: 34px; font-size: 0.82rem; flex-shrink: 0;">
+                  {{ exp.payer_initials }}
+                </div>
+                <div style="min-width: 0;">
+                  <div style="font-weight: 700; font-size: 0.92rem; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
+                    {{ exp.label }}
+                  </div>
+                  <div style="font-size: 0.78rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.45rem;">
+                    <span>{{ exp.date }}</span>
+                    <span>•</span>
+                    <span>Paid by {{ exp.payer_name }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="num-tabular" style="font-weight: 700; font-size: 0.98rem; color: var(--accent-primary); flex-shrink: 0;">
+                {{ exp.amount_centimes|mad_fr }}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+    </div>
+
+  {% endif %}
+
+</div>
+
+<!-- Floating Chart Tooltip -->
+<div id="chartTooltip" class="chart-tooltip" style="display: none;"></div>
+
+<script>
+  function switchChartView(view) {
+    var dailyContainer = document.getElementById('dailyChartContainer');
+    var weeklyContainer = document.getElementById('weeklyChartContainer');
+    var dailyBtn = document.getElementById('toggleDailyView');
+    var weeklyBtn = document.getElementById('toggleWeeklyView');
+
+    if (!dailyContainer || !weeklyContainer) return;
+
+    if (view === 'daily') {
+      dailyContainer.style.display = 'block';
+      weeklyContainer.style.display = 'none';
+      dailyBtn.classList.add('active');
+      weeklyBtn.classList.remove('active');
+    } else {
+      dailyContainer.style.display = 'none';
+      weeklyContainer.style.display = 'block';
+      dailyBtn.classList.remove('active');
+      weeklyBtn.classList.add('active');
+    }
+  }
+
+  // Interactive Tooltip on Chart Bars
+  document.addEventListener('DOMContentLoaded', function() {
+    var tooltip = document.getElementById('chartTooltip');
+    var barColumns = document.querySelectorAll('.chart-bar-column');
+
+    barColumns.forEach(function(col) {
+      function showTip(e) {
+        var label = col.getAttribute('data-label');
+        var amount = col.getAttribute('data-amount');
+        var count = col.getAttribute('data-count');
+        
+        tooltip.innerHTML = '<div style="font-weight:700;margin-bottom:2px;">' + label + '</div>' +
+                            '<div style="font-size:1.05rem;font-weight:800;color:var(--accent-primary);">' + amount + '</div>' +
+                            '<div style="font-size:0.75rem;opacity:0.8;">' + count + ' expense' + (count == 1 ? '' : 's') + '</div>';
+        tooltip.style.display = 'block';
+
+        var rect = col.getBoundingClientRect();
+        var tipX = rect.left + (rect.width / 2);
+        var tipY = rect.top - 12;
+
+        tooltip.style.left = tipX + 'px';
+        tooltip.style.top = tipY + 'px';
+      }
+
+      col.addEventListener('mouseenter', showTip);
+      col.addEventListener('mousemove', showTip);
+      col.addEventListener('mouseleave', function() {
+        tooltip.style.display = 'none';
+      });
+
+      // Mobile Touch Support
+      col.addEventListener('touchstart', function(e) {
+        showTip(e);
+      }, { passive: true });
+    });
+
+    document.addEventListener('touchstart', function(e) {
+      if (!e.target.closest('.chart-bar-column')) {
+        tooltip.style.display = 'none';
+      }
+    }, { passive: true });
+  });
+</script>
+{% endblock %}

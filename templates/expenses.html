@@ -1,0 +1,285 @@
+{% extends "base.html" %}
+
+{% block title %}Expenses - Roommate Split{% endblock %}
+
+{% block content %}
+<div class="card-header" style="margin-bottom: 1.5rem; flex-wrap: wrap; gap: 0.75rem;">
+  <div>
+    <h1 style="font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em;">Current Period Expenses</h1>
+    <p style="font-size: 0.88rem; color: var(--text-secondary); margin-top: 0.2rem;">
+      Track household shopping and shared bills before settling up.
+    </p>
+  </div>
+  <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+    {% if feed_items %}
+      <a href="{{ url_for('export_csv') }}" class="btn btn-secondary btn-sm" title="Export current period to CSV">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="7 10 12 15 17 10"></polyline>
+          <line x1="12" y1="15" x2="12" y2="3"></line>
+        </svg>
+        Export CSV
+      </a>
+    {% endif %}
+    {% if active_roommates|length >= 2 %}
+      <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('genericPaymentModal').classList.add('active');" title="Record a direct payment between roommates">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+        Record Payment
+      </button>
+    {% endif %}
+    <a href="{{ url_for('add_expense') }}" class="btn btn-primary btn-sm">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="5" x2="12" y2="19"></line>
+        <line x1="5" y1="12" x2="19" y2="12"></line>
+      </svg>
+      Add Expense
+    </a>
+  </div>
+</div>
+
+{% if feed_items %}
+  <!-- Date-Grouped Unified Feed (Expenses & Payments) -->
+  {% for date_group, group_items in feed_items|groupby('date') %}
+    <div class="date-section">
+      <div class="date-header">
+        <span class="date-badge">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="16" y1="2" x2="16" y2="6"></line>
+            <line x1="8" y1="2" x2="8" y2="6"></line>
+            <line x1="3" y1="10" x2="21" y2="10"></line>
+          </svg>
+          {{ date_group | friendly_date }}
+        </span>
+      </div>
+
+      <div class="card" style="padding: 0; overflow: hidden;">
+        {% for item in group_items %}
+          {% if item.item_type == 'payment' %}
+            <!-- Direct Payment Row -->
+            <div class="expense-row" style="background: rgba(12, 110, 94, 0.03);">
+              <div class="expense-left">
+                <!-- Payer Avatar -->
+                <div class="avatar" style="{% if not item.from_avatar_url %}background: {{ item.from_gradient }};{% endif %}" title="Paid by {{ item.from_name }}">
+                  {% if item.from_avatar_url %}
+                    <img src="{{ item.from_avatar_url }}" alt="{{ item.from_name }}">
+                  {% else %}
+                    {{ item.from_initials }}
+                  {% endif %}
+                </div>
+
+                <div class="expense-details">
+                  <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                    <span class="expense-title">Payment: {{ item.from_name }} &rarr; {{ item.to_name }}</span>
+                    <span class="badge" style="background: var(--accent-primary-light); color: var(--accent-primary); border: 1px solid rgba(12, 110, 94, 0.2); font-size: 0.7rem; padding: 0.15rem 0.5rem;">
+                      Payment
+                    </span>
+                  </div>
+                  <div class="expense-meta">
+                    <span>Direct repayment</span>
+                    {% if item.notes %}
+                      <span>&bull;</span>
+                      <span style="font-style: italic;">{{ item.notes }}</span>
+                    {% endif %}
+                  </div>
+                </div>
+              </div>
+
+              <div class="expense-right">
+                <span class="expense-amount-val tabular-nums" style="color: var(--gain);" data-amount="{{ item.amount_centimes | mad }}">
+                  +{{ item.amount_centimes | mad_fr }}
+                </span>
+                
+                <div class="expense-actions">
+                  <form method="POST" action="{{ url_for('delete_payment', payment_id=item.id) }}" style="display: inline;"
+                        data-confirm="This repayment will be removed and roommate debts will be restored."
+                        data-confirm-title="Delete Payment"
+                        data-confirm-item="{{ item.from_name }} → {{ item.to_name }}"
+                        data-confirm-amount="+{{ item.amount_centimes | mad_fr }}"
+                        data-confirm-btn="Delete Payment">
+                    <button type="submit" class="btn-icon btn-icon-danger" style="width: 30px; height: 30px;" title="Delete payment">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                      </svg>
+                    </button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          {% else %}
+            <!-- Expense Row -->
+            <div class="expense-row">
+              <div class="expense-left">
+                <!-- Payer Avatar -->
+                <div class="avatar" style="{% if not item.paid_by_avatar_url %}background: {{ item.paid_by_gradient }};{% endif %}" title="Paid by {{ item.paid_by_name }}">
+                  {% if item.paid_by_avatar_url %}
+                    <img src="{{ item.paid_by_avatar_url }}" alt="{{ item.paid_by_name }}">
+                  {% else %}
+                    {{ item.paid_by_initials }}
+                  {% endif %}
+                </div>
+
+                <div class="expense-details">
+                  <span class="expense-title">{{ item.label }}</span>
+                  <div class="expense-meta">
+                    <span>Paid by <strong>{{ item.paid_by_name }}</strong></span>
+                    <span>&bull;</span>
+                    <span>Split between {{ item.participants|length }} people</span>
+                  </div>
+
+                  <!-- Participant Chips -->
+                  <div class="participant-chips">
+                    {% for p in item.participants %}
+                      <span class="chip tabular-nums" data-amount="{{ p.share_centimes | mad }}">
+                        <span class="avatar avatar-sm" style="{% if not p.avatar_url %}background: {{ p.gradient }};{% endif %} width: 16px; height: 16px; font-size: 0.55rem;">
+                          {% if p.avatar_url %}
+                            <img src="{{ p.avatar_url }}" alt="{{ p.name }}">
+                          {% else %}
+                            {{ p.initials }}
+                          {% endif %}
+                        </span>
+                        <span>{{ p.name }}: {{ p.share_centimes | mad_fr }}</span>
+                      </span>
+                    {% endfor %}
+                  </div>
+                </div>
+              </div>
+
+              <div class="expense-right">
+                <span class="expense-amount-val tabular-nums" data-amount="{{ item.amount_centimes | mad }}">
+                  {{ item.amount_centimes | mad_fr }}
+                </span>
+                
+                <div class="expense-actions">
+                  <a href="{{ url_for('edit_expense', expense_id=item.id) }}" class="btn-icon" style="width: 30px; height: 30px;" title="Edit expense">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                    </svg>
+                  </a>
+                  <form method="POST" action="{{ url_for('delete_expense', expense_id=item.id) }}" style="display: inline;"
+                        data-confirm="This expense will be removed from everyone's balance and settlement calculations."
+                        data-confirm-title="Delete Expense"
+                        data-confirm-item="{{ item.label }}"
+                        data-confirm-amount="{{ item.amount_centimes | mad_fr }}"
+                        data-confirm-btn="Delete Expense">
+                    <button type="submit" class="btn-icon btn-icon-danger" style="width: 30px; height: 30px;" title="Delete expense">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                      </svg>
+                    </button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+  {% endfor %}
+{% else %}
+  <!-- Empty State Illustration -->
+  <div class="card empty-state">
+    <svg class="empty-state-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+      <polyline points="14 2 14 8 20 8"></polyline>
+      <line x1="16" y1="13" x2="8" y2="13"></line>
+      <line x1="16" y1="17" x2="8" y2="17"></line>
+      <polyline points="10 9 9 9 8 9"></polyline>
+    </svg>
+    <h3>No expenses recorded yet</h3>
+    <p>Everything is clean. Start recording your shared shopping and bills to split them easily.</p>
+    <a href="{{ url_for('add_expense') }}" class="btn btn-primary">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="5" x2="12" y2="19"></line>
+        <line x1="5" y1="12" x2="19" y2="12"></line>
+      </svg>
+      Add First Expense
+    </a>
+  </div>
+{% endif %}
+
+<!-- Generic Record Payment Modal (accessible from Expenses page) -->
+<div class="modal-backdrop" id="genericPaymentModal">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <div style="display: flex; align-items: center; gap: 0.65rem;">
+        <div class="header-icon-box" style="background: var(--accent-primary-light); color: var(--accent-primary);">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+        </div>
+        <div>
+          <h3 class="modal-title">Record Payment</h3>
+          <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">
+            Log a direct reimbursement between roommates
+          </p>
+        </div>
+      </div>
+      <button type="button" class="btn-icon close-modal" style="border: none;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+
+    <form method="POST" action="{{ url_for('add_payment') }}">
+      <div class="form-group">
+        <label class="form-label">Who Paid? (Payer) *</label>
+        <select name="from_roommate_id" class="form-control" required>
+          <option value="" disabled selected>Select roommate who gave money</option>
+          {% for r in active_roommates %}
+            <option value="{{ r.id }}">{{ r.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Who Received? (Recipient) *</label>
+        <select name="to_roommate_id" class="form-control" required>
+          <option value="" disabled selected>Select roommate who received money</option>
+          {% for r in active_roommates %}
+            <option value="{{ r.id }}">{{ r.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Amount (MAD) *</label>
+        <div class="amount-input-wrapper">
+          <input type="text" name="amount" class="form-control hero-amount-input tabular-nums" placeholder="0,00" required>
+          <span class="amount-currency-tag">MAD</span>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Date *</label>
+        <input type="date" name="date" class="form-control" value="{{ today }}" required>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Notes (Optional)</label>
+        <input type="text" name="notes" class="form-control" placeholder="e.g. Cash reimbursement">
+      </div>
+
+      <div style="display: flex; gap: 0.75rem; justify-content: flex-end; margin-top: 1.5rem;">
+        <button type="button" class="btn btn-secondary close-modal">Cancel</button>
+        <button type="submit" class="btn btn-primary">Confirm Payment</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Mobile Floating Action Button -->
+<a href="{{ url_for('add_expense') }}" class="mobile-fab" title="Add Expense" aria-label="Add Expense">
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="12" y1="5" x2="12" y2="19"></line>
+    <line x1="5" y1="12" x2="19" y2="12"></line>
+  </svg>
+</a>
+{% endblock %}
